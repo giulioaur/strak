@@ -1,0 +1,6 @@
+.vs/
+Debug/
+x64/Release/TrackingDLL.*
+TrackingDLL/Debug/
+TrackingDLL/x64/
+TrackingDLL/ffmpeg/bin/
