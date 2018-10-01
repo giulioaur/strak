@@ -177,7 +177,7 @@ void __stdcall getImages(uint8_t *img, uint8_t *normalized, uint8_t *lip) {
 
 /// Returns the video streamed from the remote instance of the library.
 int __stdcall getVideo(uint8_t *frame) {
-	if (!isReceiving)		return TrackingError::NO_RECEIVE;
+	//if (!isReceiving)		return TrackingError::NO_RECEIVE;
 	if (!newReceivedFrame)	return TrackingError::NO_FRAME;
 	else {
 		memcpy(frame, video.data, (imageWidth - 140) * (imageHeight - 20) * 3);
@@ -228,7 +228,7 @@ int main() {
 
 	namedWindow("frame", WINDOW_AUTOSIZE);
 	namedWindow("normalized frame", WINDOW_AUTOSIZE);
-	//namedWindow("edges", WINDOW_AUTOSIZE);
+	namedWindow("edges", WINDOW_AUTOSIZE);
 	namedWindow("only lip", WINDOW_AUTOSIZE);
 	//namedWindow("sliders", WINDOW_AUTOSIZE);
 
@@ -245,7 +245,9 @@ int main() {
 				setMiddleLine(middleLine[0].y + 5);
 				break;
 			case 32:
-				isCalibrating ^= true; break;
+				if(isCalibrating)	stopCalibration(); 
+				else				startCalibration();
+				break;
 			default:
 				setSendFlag(sendFlag ? false : true); break;
 			}
@@ -285,7 +287,6 @@ void receiveImage() {
 				// Crop frame
 				Mat croppedFrame = frame(crop);
 				cvtColor(cropMouth(croppedFrame, getRedImage(croppedFrame)), video, COLOR_BGR2RGB);
-				newReceivedFrame = true;
 
 				#ifdef AS_EXE
 				imshow("frame", video);
@@ -373,6 +374,8 @@ void processImage() {
 			cvtColor(croppedFrame, image, COLOR_BGR2RGB);
 			newFrame = true;
 
+			//cvtColor(cropMouth(croppedFrame, filtered), video, COLOR_BGR2RGB);
+
 			#ifdef AS_EXE
 			imshow("frame", croppedFrame);
 			#endif // AS_EXE
@@ -402,6 +405,7 @@ Mat cropMouth(const Mat &croppedFrame, const Mat &filtered) {
 		Mat mask = Mat::zeros(edges.size(), CV_8UC3);
 		drawContours(mask, contours, (int)maxI, Scalar(255, 255, 255), FILLED);
 		bitwise_and(croppedFrame, mask, mouth);
+		newReceivedFrame = true;
 	}
 
 	return mouth;
@@ -531,7 +535,7 @@ Mat getEdgeImage(const Mat &img) {
 	addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0, grad);
 
 	#ifdef AS_EXE
-	//imshow("edges", grad);
+	imshow("edges", grad);
 	#endif //AS_EXE
 
 	return grad;
@@ -595,34 +599,29 @@ array<Points, 3> getFeaturePoints(const Mat &img, const Points &startingPoint) {
 		}
 	}
 
-	if (points[0].size() > 0 && points[1].size() > 0) {
+	if (points[UPPER_LIP].size() > 0 && points[LOWER_LIP].size() > 0) {
 		// Get lip corner
-		int x = points[1][0].x, y;
-		int startLip = -1, lastNonNoisy = points[1][1].y, lastY;
+		int x = points[LOWER_LIP][0].x, y;
+		int lastNonNoisy = points[LOWER_LIP][1].y, lastY;
 		bool found = true;
-		const int neighSize = 10;
+		const int neighSize = 8;
 
-		int openess = points[1][0].y - points[0][0].y;
-
-		y = points[0][0].y + openess / 2;
+		//int openess = points[LOWER_LIP][0].y - points[UPPER_LIP][0].y;
+		//y = points[LOWER_LIP][0].y + openess / 2;
+		y = startingPoint[1].y;
 
 		// Search for the lip border.
 		x = startingPoint[1].x + 20;
-		while (x < img.cols) {
-			found = false;
-			for (; x < img.cols && !found; ++x) {
-				if (edges.at<uchar>(y, x) > edgeTreshold && isBlack(img.at<Vec3b>(y, x + 1))) {
-					found = true; lastNonNoisy = x;
-				}
-			}
-		}
+		for (; x < img.cols; ++x)
+			if (edges.at<uchar>(y, x) > edgeTreshold)
+				lastNonNoisy = x;
 
 		lastY = y;
 		// Found corner
 		found = true;
-		for (; x < img.cols && found; ++x) {
+		for (x = lastNonNoisy; x < img.cols && found; ++x) {
 			found = false;
-			for (y = lastY - neighSize; y > lastY + neighSize && !found; --y) {
+			for (y = lastY + neighSize; y >= lastY - neighSize && !found; --y) {
 				if (edges.at<uchar>(y, x) > edgeTreshold) {
 					found = true;
 					lastY = y;
